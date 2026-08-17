@@ -100,6 +100,7 @@ async function enterApp() {
   $('appView').classList.remove('hidden');
   $('userLabel').textContent = user.name + ' | ' + user.role;
   $('newOrderBtn').classList.toggle('hidden', user.role !== 'Admin');
+  buildHead();
   await loadConfig();
   // instant paint from cache, then refresh
   var c = localStorage.getItem('st_orders');
@@ -110,16 +111,17 @@ async function enterApp() {
 /* ---------- config ---------- */
 async function loadConfig() {
   var cached = localStorage.getItem('st_config');
-  if (cached) { try { config = JSON.parse(cached); buildHead(); } catch (e) {} }
+  if (cached) { try { config = JSON.parse(cached); } catch (e) {} }
   try {
     var res = await api({ action: 'getConfig' });
-    if (res && res.ok) { config = res; localStorage.setItem('st_config', JSON.stringify(res)); buildHead(); }
-  } catch (e) { if (!config) toast(e.message, true); }
+    if (res && res.ok) { config = res; localStorage.setItem('st_config', JSON.stringify(res)); }
+    else if (res && res.ok === false && res.auth !== false) { toast('Config: ' + (res.error || 'failed'), true); }
+  } catch (e) { toast('Config: ' + e.message, true); }
+  buildHead();
 }
 function orderCols() { return (config && config.fields && config.fields.Order) ? config.fields.Order : []; }
 
 function buildHead() {
-  if (!config) return;
   var cols = orderCols();
   var html = '<tr><th>Order</th>';
   cols.forEach(function (f) { html += '<th class="' + (f.type === 'number' ? 'num' : '') + '">' + esc(f.label) + '</th>'; });
@@ -130,9 +132,9 @@ function buildHead() {
 
 /* ---------- orders ---------- */
 function showSkeleton() {
-  var cols = orderCols().length + 9;
+  var cols = Math.max(6, orderCols().length + 9);
   var rows = '';
-  for (var r = 0; r < 8; r++) {
+  for (var r = 0; r < 5; r++) {
     var tds = '';
     for (var c = 0; c < cols; c++) tds += '<td><div class="sk"></div></td>';
     rows += '<tr>' + tds + '</tr>';
@@ -148,11 +150,22 @@ async function loadOrders() {
       action: 'getOrders', role: user.role, vendorTag: user.vendorTag, name: user.name,
       page: state.page, pageSize: PAGE_SIZE, status: state.status, search: state.search
     });
-    if (!res || !res.ok) { toast((res && res.error) || 'Failed to load', true); return; }
+    if (!res || !res.ok) {
+      if (res && res.auth === false) return;               // forceLogout already handled it
+      renderError((res && res.error) || 'Failed to load'); return;
+    }
     lastRes = res;
     if (state.page === 1 && !state.search && !state.status) localStorage.setItem('st_orders', JSON.stringify(res));
     renderOrders(res);
-  } catch (e) { toast(e.message, true); }
+  } catch (e) { renderError(e.message); }
+}
+
+function renderError(msg) {
+  $('ordersBody').innerHTML = '';
+  var em = $('emptyMsg'); em.textContent = msg; em.classList.remove('hidden');
+  $('resultCount').textContent = ''; $('pageInfo').textContent = '';
+  $('prevBtn').disabled = true; $('nextBtn').disabled = true;
+  toast(msg, true);
 }
 
 function badge(kind, txt) {
@@ -161,11 +174,10 @@ function badge(kind, txt) {
 }
 
 function renderOrders(res) {
-  if (!config) return;
   var cols = orderCols();
   var rows = res.rows || [];
   var body = $('ordersBody');
-  if (!rows.length) { body.innerHTML = ''; $('emptyMsg').classList.remove('hidden'); }
+  if (!rows.length) { body.innerHTML = ''; $('emptyMsg').textContent = 'No orders found.'; $('emptyMsg').classList.remove('hidden'); }
   else $('emptyMsg').classList.add('hidden');
 
   body.innerHTML = rows.map(function (o, i) {
