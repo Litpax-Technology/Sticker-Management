@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sticker Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <section id="loginView" class="login-wrap">
+    <div class="login-card pop-in">
+      <div class="brand"><div class="brand-dot"></div><span id="brandName">Sticker Tracker</span></div>
+      <p class="login-sub">Enter your PIN to continue</p>
+      <input id="pinInput" class="pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="PIN" autocomplete="off" />
+      <button id="loginBtn" class="btn btn-primary btn-block">Login</button>
+      <p id="loginError" class="err"></p>
+    </div>
+  </section>
+
+  <!-- APP -->
+  <section id="appView" class="app hidden">
+    <header class="topbar">
+      <div class="brand"><div class="brand-dot"></div><span id="appTitle">Sticker Tracker</span></div>
+      <div class="topbar-right">
+        <span id="userLabel" class="user-label"></span>
+        <button id="logoutBtn" class="btn btn-ghost">Logout</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="toolbar">
+        <input id="searchBox" class="search" placeholder="Search order / sticker / model / vendor..." />
+        <div id="chips" class="chips">
+          <button class="chip active" data-status="">All</button>
+          <button class="chip" data-status="Pending">Pending</button>
+          <button class="chip" data-status="Partial">Partial</button>
+          <button class="chip" data-status="Received">Received</button>
+        </div>
+        <button id="newOrderBtn" class="btn btn-primary hidden">+ New Order</button>
+        <button id="refreshBtn" class="btn btn-ghost">Refresh</button>
+      </div>
+
+      <div class="resultbar">
+        <span id="resultCount" class="result-count"></span>
+        <div class="pager">
+          <button id="prevBtn" class="btn btn-ghost btn-sm">Prev</button>
+          <span id="pageInfo" class="page-info"></span>
+          <button id="nextBtn" class="btn btn-ghost btn-sm">Next</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="table-scroll">
+          <table>
+            <thead id="ordersHead"></thead>
+            <tbody id="ordersBody"></tbody>
+          </table>
+        </div>
+        <p id="emptyMsg" class="empty hidden">No orders found.</p>
+      </div>
+    </main>
+  </section>
+
+  <!-- MODAL -->
+  <div id="modalWrap" class="modal-wrap hidden">
+    <div class="modal pop-in">
+      <div class="modal-head">
+        <h3 id="modalTitle">Title</h3>
+        <button id="modalClose" class="icon-btn">&times;</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+      <div id="modalFoot" class="modal-foot">
+        <button id="modalCancel" class="btn btn-ghost">Cancel</button>
+        <button id="modalSave" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
