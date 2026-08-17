@@ -49,7 +49,12 @@ function api(params) {
     var s = document.createElement('script');
     var timer = setTimeout(function () { cleanup(); reject(new Error('Request timed out')); }, 20000);
     function cleanup() { try { delete window[cb]; } catch (e) { window[cb] = undefined; } if (s.parentNode) s.parentNode.removeChild(s); clearTimeout(timer); }
-    window[cb] = function (res) { cleanup(); resolve(res); };
+    window[cb] = function (res) {
+      cleanup();
+      if (res && res.ok === false && res.auth === false) forceLogout();
+      resolve(res);
+    };
+    if (user && user.token && params.action !== 'login') params.token = user.token;
     var q = Object.keys(params).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(params[k]); }).join('&');
     s.src = CONFIG.API_URL + '?' + q + '&callback=' + cb;
     s.onerror = function () { cleanup(); reject(new Error('Network error')); };
@@ -66,7 +71,7 @@ async function doLogin() {
   try {
     var res = await api({ action: 'login', pin: pin });
     if (!res.ok) { showLoginError(res.error || 'Invalid PIN'); return; }
-    user = { name: res.name, role: res.role, vendorTag: res.vendorTag || '' };
+    user = { name: res.name, role: res.role, vendorTag: res.vendorTag || '', token: res.token || '' };
     localStorage.setItem('st_user', JSON.stringify(user));
     showLoginError('');
     await enterApp();
@@ -79,6 +84,15 @@ function logout() {
   $('appView').classList.add('hidden');
   $('loginView').classList.remove('hidden');
   $('pinInput').value = '';
+}
+var _authFailed = false;
+function forceLogout() {
+  if (_authFailed) return;         // avoid loops / double toasts
+  _authFailed = true;
+  logout();
+  closeModal();
+  toast('Session expired — please log in again', true);
+  setTimeout(function () { _authFailed = false; }, 3000);
 }
 
 async function enterApp() {
