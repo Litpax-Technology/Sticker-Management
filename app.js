@@ -99,7 +99,7 @@ async function enterApp() {
   $('loginView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('userLabel').textContent = user.name + ' | ' + user.role;
-  $('newOrderBtn').classList.toggle('hidden', user.role !== 'Admin');
+  $('newOrderBtn').classList.toggle('hidden', user.role !== 'Admin' && user.role !== 'Receiver');
   buildHead();
   await loadConfig();
   // instant paint from cache, then refresh
