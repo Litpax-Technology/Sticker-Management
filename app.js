@@ -218,7 +218,8 @@ function renderOrders(res) {
 function actions(id) {
   var b = '<div class="row-actions">';
   b += '<button class="btn btn-ghost btn-sm" data-act="detail" data-id="' + id + '">View</button>';
-  b += '<button class="btn btn-ghost btn-sm" data-act="ship" data-id="' + id + '">+ Receive</button>';
+  if (user.role === 'Admin' || user.role === 'Vendor')
+    b += '<button class="btn btn-ghost btn-sm" data-act="ship" data-id="' + id + '">+ Handover</button>';
   if (user.role === 'Admin') b += '<button class="btn btn-ghost btn-sm" data-act="pay" data-id="' + id + '">+ Payment</button>';
   return b + '</div>';
 }
@@ -293,14 +294,25 @@ function openShip(o) {
   var fields = config.fields.Shipment;
   var pending = Number(o.QtyPending != null ? o.QtyPending : (o.QtyOrdered - o.QtyReceived)) || 0;
   var head = '<div class="summary-box"><b>' + esc(o.OrderID) + '</b> &middot; ' + esc(val(o.StickerName)) +
-             '<br>Ordered <b>' + num(o.QtyOrdered) + '</b> &middot; Received <b>' + num(o.QtyReceived) +
-             '</b> &middot; Pending <b>' + pending + '</b></div>';
-  openModal('Receive / Handover', head + buildForm(fields, null), async function () {
+             '<br>Ordered <b>' + num(o.QtyOrdered) + '</b> &middot; Handed Over <b>' + num(o.QtyReceived) +
+             '</b> &middot; Pending <b><span id="pendLive">' + pending + '</span></b></div>';
+  openModal('Handover', head + buildForm(fields, null), async function () {
     var data = collectForm(); data.OrderID = o.OrderID;
     var e = firstError(fields, data); if (e) { toast(e, true); return; }
     if ((Number(data.Qty) || 0) > pending) { toast('Qty exceeds pending (' + pending + ')', true); return; }
-    await save('addShipment', data, 'Entry saved', { loggedBy: user.name });
+    await save('addShipment', data, 'Handover saved', { loggedBy: user.name });
   });
+
+  var qEl = $('modalBody').querySelector('[data-field="Qty"]');
+  var pendEl = $('pendLive');
+  if (qEl && pendEl) {
+    qEl.addEventListener('input', function () {
+      var entered = Number(qEl.value) || 0;
+      var remain = pending - entered;
+      pendEl.textContent = remain;
+      pendEl.style.color = remain < 0 ? 'var(--danger)' : '';
+    });
+  }
 }
 
 function openPay(o) {
