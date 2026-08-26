@@ -39,6 +39,15 @@ function init() {
     };
   });
 
+  // Auto-login from URL (?pin=) — jab SOMS/IMS se redirect ho
+  var urlPin = new URLSearchParams(location.search).get('pin');
+  if (urlPin) {
+    $('pinInput').value = urlPin;
+    history.replaceState(null, '', location.pathname);   // URL se ?pin hata do
+    doLogin();
+    return;
+  }
+
   var saved = localStorage.getItem('st_user');
   if (saved) { user = JSON.parse(saved); enterApp(); }
 }
