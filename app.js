@@ -18,6 +18,7 @@ function init() {
   $('loginBtn').onclick = doLogin;
   $('pinInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
   $('logoutBtn').onclick = logout;
+  $('manageBtn').onclick = openManage;
   $('refreshBtn').onclick = function () { loadOrders(); };
   $('newOrderBtn').onclick = openNewOrder;
   $('prevBtn').onclick = function () { if (state.page > 1) { state.page--; loadOrders(); } };
@@ -100,6 +101,7 @@ async function enterApp() {
   $('appView').classList.remove('hidden');
   $('userLabel').textContent = user.name + ' | ' + user.role;
   $('newOrderBtn').classList.toggle('hidden', user.role !== 'Admin' && user.role !== 'Receiver');
+  $('manageBtn').classList.toggle('hidden', user.role !== 'Admin' && user.role !== 'Receiver');
   buildHead();
   await loadConfig();
   // instant paint from cache, then refresh
@@ -230,7 +232,14 @@ function buildForm(fields, record) {
     var val = record ? (record[f.name] != null ? record[f.name] : '') : '';
     var label = esc(f.label) + (f.required ? ' *' : '');
     var input;
-    if (f.type === 'dropdown') {
+    if (f.name === 'Vendor') {
+      var vopts = ['<option value="">Select...</option>'];
+      ((config.vendors) || []).forEach(function (v) {
+        var lbl = v.phone ? (v.name + ' — ' + v.phone) : v.name;
+        vopts.push('<option value="' + esc(v.name) + '"' + (String(v.name) === String(val) ? ' selected' : '') + '>' + esc(lbl) + '</option>');
+      });
+      input = '<select data-field="' + f.name + '">' + vopts.join('') + '</select>';
+    } else if (f.type === 'dropdown') {
       var opts = ['<option value="">Select...</option>'];
       ((config.lists && config.lists[f.list]) || []).forEach(function (o) {
         opts.push('<option' + (String(o) === String(val) ? ' selected' : '') + '>' + esc(o) + '</option>');
@@ -384,6 +393,124 @@ async function save(action, data, okMsg, extra) {
   } catch (e) { toast(e.message, true); }
   finally { $('modalSave').disabled = false; $('modalSave').textContent = 'Save'; }
 }
+
+/* ---------- manage (master data) ---------- */
+var manageTab = 'lists';
+
+function openManage() {
+  manageTab = 'lists';
+  renderManage();
+}
+
+function renderManage() {
+  var tabs = '<div class="mtabs">' +
+    '<button class="mtab' + (manageTab === 'lists' ? ' active' : '') + '" data-mtab="lists">Lists</button>' +
+    '<button class="mtab' + (manageTab === 'vendors' ? ' active' : '') + '" data-mtab="vendors">Vendors</button>' +
+    '</div>';
+  var body = manageTab === 'lists' ? manageListsHTML() : manageVendorsHTML();
+  openModal('Manage Data', tabs + '<div id="manageBody">' + body + '</div>', null);
+
+  $('modalBody').querySelectorAll('[data-mtab]').forEach(function (b) {
+    b.onclick = function () { manageTab = b.getAttribute('data-mtab'); renderManage(); };
+  });
+  wireManage();
+}
+
+function manageListsHTML() {
+  var editable = (config && config.editableLists) || [];
+  if (!editable.length) return '<p class="empty">No editable lists.</p>';
+  var html = '';
+  editable.forEach(function (ln) {
+    var vals = (config.lists && config.lists[ln]) || [];
+    html += '<div class="mlist"><div class="mlist-head">' + esc(ln) + '</div>';
+    html += '<div class="mlist-items">';
+    if (vals.length) {
+      vals.forEach(function (v) {
+        html += '<div class="mrow" data-list="' + esc(ln) + '" data-val="' + esc(v) + '">' +
+                '<span class="mrow-txt">' + esc(v) + '</span>' +
+                '<button class="btn btn-ghost btn-sm mrow-edit">Edit</button></div>';
+      });
+    } else html += '<p class="empty" style="padding:8px">Empty</p>';
+    html += '</div>';
+    html += '<div class="madd"><input class="search madd-in" placeholder="Add to ' + esc(ln) + '..." data-list="' + esc(ln) + '">' +
+            '<button class="btn btn-primary btn-sm madd-btn" data-list="' + esc(ln) + '">Add</button></div>';
+    html += '</div>';
+  });
+  return html;
+}
+
+function manageVendorsHTML() {
+  var vendors = (config && config.vendors) || [];
+  var html = '<div class="mlist"><div class="mlist-head">Add Vendor</div>' +
+    '<div class="field"><label>Name *</label><input id="vName" type="text"></div>' +
+    '<div class="field"><label>Phone</label><input id="vPhone" type="text"></div>' +
+    '<div class="field"><label>City</label><input id="vCity" type="text"></div>' +
+    '<div class="field"><label>Address</label><input id="vAddress" type="text"></div>' +
+    '<button class="btn btn-primary btn-block" id="vAddBtn">Add Vendor</button></div>';
+  html += '<div class="mlist"><div class="mlist-head">Vendors (' + vendors.length + ')</div><div class="mlist-items">';
+  if (vendors.length) {
+    vendors.forEach(function (v) {
+      var sub = [v.phone, v.city].filter(Boolean).join(' · ');
+      html += '<div class="mrow"><span class="mrow-txt"><b>' + esc(v.name) + '</b>' +
+              (sub ? '<br><small style="color:var(--muted)">' + esc(sub) + '</small>' : '') + '</span></div>';
+    });
+  } else html += '<p class="empty" style="padding:8px">No vendors yet</p>';
+  html += '</div></div>';
+  return html;
+}
+
+function wireManage() {
+  // add to list
+  $('modalBody').querySelectorAll('.madd-btn').forEach(function (b) {
+    b.onclick = async function () {
+      var ln = b.getAttribute('data-list');
+      var inp = $('modalBody').querySelector('.madd-in[data-list="' + cssq(ln) + '"]');
+      var val = (inp.value || '').trim();
+      if (!val) { toast('Enter a value', true); return; }
+      b.disabled = true;
+      var res = await api({ action: 'addListValue', list: ln, value: val });
+      b.disabled = false;
+      if (!res || !res.ok) { toast((res && res.error) || 'Failed', true); return; }
+      toast('Added');
+      await loadConfig();
+      renderManage();
+    };
+  });
+  // edit list value
+  $('modalBody').querySelectorAll('.mrow-edit').forEach(function (b) {
+    b.onclick = function () {
+      var row = b.closest('.mrow');
+      var ln = row.getAttribute('data-list'), old = row.getAttribute('data-val');
+      var nv = prompt('Rename "' + old + '" to:', old);
+      if (nv == null) return;
+      nv = nv.trim();
+      if (!nv || nv === old) return;
+      (async function () {
+        var res = await api({ action: 'editListValue', list: ln, oldValue: old, newValue: nv });
+        if (!res || !res.ok) { toast((res && res.error) || 'Failed', true); return; }
+        toast('Updated');
+        await loadConfig();
+        renderManage();
+      })();
+    };
+  });
+  // add vendor
+  var vBtn = $('vAddBtn');
+  if (vBtn) vBtn.onclick = async function () {
+    var data = { Name: $('vName').value.trim(), Phone: $('vPhone').value.trim(),
+                 City: $('vCity').value.trim(), Address: $('vAddress').value.trim() };
+    if (!data.Name) { toast('Vendor name required', true); return; }
+    vBtn.disabled = true;
+    var res = await api({ action: 'addVendor', data: JSON.stringify(data) });
+    vBtn.disabled = false;
+    if (!res || !res.ok) { toast((res && res.error) || 'Failed', true); return; }
+    toast('Vendor added');
+    await loadConfig();
+    renderManage();
+  };
+}
+
+function cssq(s) { return String(s).replace(/"/g, '\\"'); }
 
 /* ---------- utils ---------- */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
