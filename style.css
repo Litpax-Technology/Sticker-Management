@@ -110,4 +110,17 @@ td.num,th.num{text-align:right}
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;box-shadow:0 8px 20px rgba(0,0,0,.2);z-index:60;animation:toastUp .2s ease-out}
 .toast.err-toast{background:var(--danger)}
 
+/* manage screen */
+.mtabs{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+.mtab{background:none;border:none;padding:8px 14px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.mtab:hover{color:var(--text)}
+.mtab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.mlist{margin-bottom:20px;border:1px solid var(--line);border-radius:10px;padding:14px}
+.mlist-head{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;margin-bottom:10px}
+.mlist-items{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:220px;overflow-y:auto}
+.mrow{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:#fafafb;border:1px solid var(--line);border-radius:8px}
+.mrow-txt{font-size:13px}
+.madd{display:flex;gap:8px}
+.madd-in{flex:1;min-width:0}
+
 @media (max-width:640px){.content{padding:14px}.topbar{padding:12px 14px}.toolbar .btn-primary{margin-left:0}}
