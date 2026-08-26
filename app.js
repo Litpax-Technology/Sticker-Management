@@ -236,6 +236,13 @@ function buildForm(fields, record) {
         opts.push('<option' + (String(o) === String(val) ? ' selected' : '') + '>' + esc(o) + '</option>');
       });
       input = '<select data-field="' + f.name + '">' + opts.join('') + '</select>';
+    } else if (f.type === 'datalist') {
+      var dlId = 'dl_' + f.name;
+      var dopts = ((config.lists && config.lists[f.list]) || []).map(function (o) {
+        return '<option value="' + esc(o) + '"></option>';
+      }).join('');
+      input = '<input data-field="' + f.name + '" list="' + dlId + '" value="' + esc(val) + '" autocomplete="off">' +
+              '<datalist id="' + dlId + '">' + dopts + '</datalist>';
     } else if (f.type === 'number') {
       input = '<input data-field="' + f.name + '" type="number" step="any" value="' + esc(val) + '">';
     } else if (f.type === 'date') {
