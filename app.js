@@ -299,9 +299,23 @@ function closeModal() { $('modalWrap').classList.add('hidden'); }
 
 function openNewOrder() {
   var fields = config.fields.Order;
-  openModal('New Order', buildForm(fields, null), async function () {
+  var extra = '<div class="field"><label>Sample Photo (optional)</label>' +
+    '<input type="file" id="sampleFile" accept="image/*">' +
+    '<div id="samplePreview" class="sample-preview hidden"></div></div>';
+  openModal('New Order', buildForm(fields, null) + extra, async function () {
     var data = collectForm();
     var e = firstError(fields, data); if (e) { toast(e, true); return; }
+    var fileEl = $('sampleFile');
+    if (fileEl && fileEl.files && fileEl.files[0]) {
+      $('modalSave').disabled = true; $('modalSave').textContent = 'Uploading photo...';
+      try {
+        data.SampleImage = await uploadImage(fileEl.files[0]);
+      } catch (upErr) {
+        toast(upErr.message || 'Photo upload failed', true);
+        $('modalSave').disabled = false; $('modalSave').textContent = 'Save';
+        return;
+      }
+    }
     await save('addOrder', data, 'Order created');
   });
   // live total = qty * rate
@@ -311,6 +325,19 @@ function openNewOrder() {
   if (q && r && t) {
     var calc = function () { var rate = Number(r.value) || 0; if (rate > 0) t.value = (Number(q.value) || 0) * rate; };
     q.addEventListener('input', calc); r.addEventListener('input', calc);
+  }
+  // image preview
+  var fileEl = $('sampleFile');
+  if (fileEl) {
+    fileEl.addEventListener('change', function () {
+      var pv = $('samplePreview');
+      var f = fileEl.files && fileEl.files[0];
+      if (f) {
+        var rd = new FileReader();
+        rd.onload = function () { pv.innerHTML = '<img src="' + rd.result + '" alt="preview">'; pv.classList.remove('hidden'); };
+        rd.readAsDataURL(f);
+      } else { pv.innerHTML = ''; pv.classList.add('hidden'); }
+    });
   }
 }
 
@@ -365,7 +392,13 @@ async function openDetail(id) {
     var html = '<div class="summary-box"><b>' + esc(o.OrderID) + '</b> &middot; ' + esc(val(o.StickerName)) +
       ' &middot; ' + esc(val(o.Vendor)) +
       '<br>Ordered <b>' + num(o.QtyOrdered) + '</b> &middot; Received <b>' + num(o.QtyReceived) + '</b> &middot; Pending <b>' + pend + '</b>' +
-      '<br>Total <b>' + num(o.TotalAmount) + '</b> &middot; Paid <b>' + num(o.AmountPaid) + '</b> &middot; Due <b>' + due + '</b></div>';
+            '<br>Total <b>' + num(o.TotalAmount) + '</b> &middot; Paid <b>' + num(o.AmountPaid) + '</b> &middot; Due <b>' + due + '</b></div>';
+
+    if (o.SampleImage) {
+      html += '<div class="detail-sub">Sample Photo</div>' +
+        '<a href="' + esc(o.SampleImage) + '" target="_blank" rel="noopener" class="sample-link">' +
+        '<img class="sample-img" src="' + esc(driveThumb(o.SampleImage)) + '" alt="Open sample photo" loading="lazy"></a>';
+    }
 
     html += '<div class="detail-sub">Receipts</div>';
     if (res.shipments.length) {
@@ -520,6 +553,52 @@ function wireManage() {
 }
 
 function cssq(s) { return String(s).replace(/"/g, '\\"'); }
+
+/* ---------- image upload (resize → POST → Drive) ---------- */
+function resizeImage(file, maxDim, quality) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var w = img.width, h = img.height;
+        var scale = Math.min(1, maxDim / Math.max(w, h));
+        var nw = Math.round(w * scale), nh = Math.round(h * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = nw; canvas.height = nh;
+        canvas.getContext('2d').drawImage(img, 0, 0, nw, nh);
+        var dataUrl = canvas.toDataURL('image/jpeg', quality || 0.85);
+        resolve({ data: dataUrl.split(',')[1], mimeType: 'image/jpeg',
+                  filename: (file.name || 'sample').replace(/\.[^.]+$/, '') + '.jpg' });
+      };
+      img.onerror = function () { reject(new Error('Invalid image')); };
+      img.src = reader.result;
+    };
+    reader.onerror = function () { reject(new Error('Could not read file')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+function uploadImage(file) {
+  return resizeImage(file, 1600, 0.85).then(function (up) {
+    var payload = { action: 'uploadImage', token: (user && user.token) || '',
+                    filename: up.filename, mimeType: up.mimeType, data: up.data };
+    return fetch(CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.text(); }).then(function (t) {
+      var res;
+      try { res = JSON.parse(t); } catch (e) { throw new Error('Bad server response'); }
+      if (res && res.ok === false && res.auth === false) { forceLogout(); throw new Error('Session expired'); }
+      if (!res || !res.ok) { throw new Error((res && res.error) || 'Upload failed'); }
+      return res.url;
+    });
+  });
+}
+
+function driveId(u) { var m = String(u || '').match(/[-\w]{25,}/); return m ? m[0] : ''; }
+function driveThumb(u) { var id = driveId(u); return id ? ('https://drive.google.com/thumbnail?id=' + id + '&sz=w1000') : u; }
 
 /* ---------- utils ---------- */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
