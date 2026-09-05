@@ -231,14 +231,17 @@ function renderOrders(res) {
 function actions(o) {
   var id = o.OrderID;
   var ss = String(o.SampleStatus || '').trim();
-  var handoverOk = (ss === '' || ss === 'None' || ss === 'Approved'); // blank = purana order, allow
+  var hasSample = (Number(o.SampleCount) || 0) > 0;
+  // sample hai hi nahi to status ko None maano (Samples tab se data uda diya ho)
+  if (!hasSample) ss = 'None';
+  var handoverOk = (ss === '' || ss === 'None' || ss === 'Approved'); // blank/no-sample = allow
   var b = '<div class="row-actions">';
   b += '<button class="btn btn-ghost btn-sm" data-act="detail" data-id="' + id + '">View</button>';
 
   if (user.role === 'Vendor')
     b += '<button class="btn btn-ghost btn-sm" data-act="sample" data-id="' + id + '">+ Sample</button>';
 
-  if ((user.role === 'Admin' || user.role === 'Receiver') && ss === 'Pending Approval')
+  if ((user.role === 'Admin' || user.role === 'Receiver') && ss === 'Pending Approval' && hasSample)
     b += '<button class="btn btn-ghost btn-sm" data-act="review" data-id="' + id + '">Review</button>';
 
   if (user.role === 'Admin' || user.role === 'Vendor') {
