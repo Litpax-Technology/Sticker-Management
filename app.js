@@ -202,7 +202,7 @@ function renderOrders(res) {
            '<td class="num">' + num(o.AmountPaid) + '</td>' +
            '<td class="num">' + num(o.AmountPending) + '</td>' +
            '<td>' + badge('pay', o.PayStatus) + '</td>' +
-           '<td>' + actions(o.OrderID) + '</td>';
+                      '<td>' + actions(o) + '</td>';
     return '<tr class="row-in" style="animation-delay:' + (i * 22) + 'ms">' + tds + '</tr>';
   }).join('');
 
@@ -214,6 +214,8 @@ function renderOrders(res) {
       if (act === 'detail') openDetail(id);
       else if (act === 'ship') openShip(ord);
       else if (act === 'pay') openPay(ord);
+      else if (act === 'sample') openSample(ord);
+      else if (act === 'review') openReview(ord);
     };
   });
 
@@ -226,11 +228,24 @@ function renderOrders(res) {
   $('nextBtn').disabled = res.page >= pages;
 }
 
-function actions(id) {
+function actions(o) {
+  var id = o.OrderID;
+  var ss = String(o.SampleStatus || '').trim();
+  var handoverOk = (ss === '' || ss === 'None' || ss === 'Approved'); // blank = purana order, allow
   var b = '<div class="row-actions">';
   b += '<button class="btn btn-ghost btn-sm" data-act="detail" data-id="' + id + '">View</button>';
-  if (user.role === 'Admin' || user.role === 'Vendor')
-    b += '<button class="btn btn-ghost btn-sm" data-act="ship" data-id="' + id + '">+ Handover</button>';
+
+  if (user.role === 'Vendor')
+    b += '<button class="btn btn-ghost btn-sm" data-act="sample" data-id="' + id + '">+ Sample</button>';
+
+  if ((user.role === 'Admin' || user.role === 'Receiver') && ss === 'Pending Approval')
+    b += '<button class="btn btn-ghost btn-sm" data-act="review" data-id="' + id + '">Review</button>';
+
+  if (user.role === 'Admin' || user.role === 'Vendor') {
+    if (handoverOk) b += '<button class="btn btn-ghost btn-sm" data-act="ship" data-id="' + id + '">+ Handover</button>';
+    else b += '<span class="lock-note" title="Sample approve hone ke baad">🔒 Handover</span>';
+  }
+
   if (user.role === 'Admin') b += '<button class="btn btn-ghost btn-sm" data-act="pay" data-id="' + id + '">+ Payment</button>';
   return b + '</div>';
 }
@@ -400,6 +415,32 @@ async function openDetail(id) {
         '<img class="sample-img" src="' + esc(driveThumb(o.SampleImage)) + '" alt="Open sample photo" loading="lazy"></a>';
     }
 
+    // Sample & Approval
+    var ssStatus = String(o.SampleStatus || '').trim();
+    if (ssStatus || (res.samples && res.samples.length)) {
+      html += '<div class="detail-sub">Sample &amp; Approval ' + sampleBadge(ssStatus) + '</div>';
+      if (res.samples && res.samples.length) {
+        html += '<div class="photo-grid">' + res.samples.map(function (s) {
+          return '<a href="' + esc(s.URL) + '" target="_blank" rel="noopener">' +
+                 '<img class="sample-img" src="' + esc(driveThumb(s.URL)) + '" loading="lazy" alt=""></a>';
+        }).join('') + '</div>';
+      } else html += '<p class="empty">Abhi sample nahi aaya.</p>';
+    }
+
+    // Comments thread
+    html += '<div class="detail-sub">Comments</div>';
+    html += '<div class="cmt-thread">';
+    if (res.comments && res.comments.length) {
+      res.comments.forEach(function (c) {
+        html += '<div class="cmt"><div class="cmt-by">' + esc(val(c.By)) +
+                ' <span class="cmt-role">' + esc(val(c.Role)) + '</span>' +
+                ' <span class="cmt-at">· ' + esc(val(c.At)) + '</span></div>' +
+                '<div class="cmt-txt">' + esc(val(c.Text)) + '</div></div>';
+      });
+    } else html += '<p class="empty">Koi comment nahi.</p>';
+    html += '</div>';
+    html += '<div class="cmt-add"><input id="cmtInput" class="search" placeholder="Comment likho..."><button class="btn btn-primary btn-sm" id="cmtSend">Send</button></div>';
+
     html += '<div class="detail-sub">Receipts</div>';
     if (res.shipments.length) {
       html += '<table class="mini-table"><tr><th>Date</th><th>Qty</th><th>Handover</th><th>By</th></tr>';
@@ -419,7 +460,90 @@ async function openDetail(id) {
     } else html += '<p class="empty">No payments yet.</p>';
 
     $('modalBody').innerHTML = html;
+    var sendBtn = $('cmtSend');
+    if (sendBtn) sendBtn.onclick = async function () {
+      var txt = $('cmtInput').value.trim();
+      if (!txt) { toast('Kuch likho', true); return; }
+      sendBtn.disabled = true;
+      var r = await api({ action: 'addComment', orderId: id, text: txt });
+      sendBtn.disabled = false;
+      if (!r || !r.ok) { toast((r && r.error) || 'Failed', true); return; }
+      openDetail(id);
+    };
   } catch (e) { toast(e.message, true); closeModal(); }
+}
+
+/* ---------- sample upload (vendor, multi-photo) ---------- */
+function openSample(o) {
+  if (!o) return;
+  var head = '<div class="summary-box"><b>' + esc(o.OrderID) + '</b> &middot; ' + esc(val(o.StickerName)) +
+             '<br>Sample photo(s) upload karo — approve hone ke baad hi handover khulega.</div>';
+  var body = '<div class="field"><label>Sample Photos *</label>' +
+    '<input type="file" id="sampleFiles" accept="image/*" multiple>' +
+    '<div id="sampleThumbs" class="sample-preview"></div></div>';
+  openModal('Upload Sample', head + body, async function () {
+    var fileEl = $('sampleFiles');
+    if (!fileEl || !fileEl.files || !fileEl.files.length) { toast('Photo select karo', true); return; }
+    $('modalSave').disabled = true; $('modalSave').textContent = 'Uploading...';
+    try {
+      var urls = [];
+      for (var i = 0; i < fileEl.files.length; i++) urls.push(await uploadImage(fileEl.files[i]));
+      var res = await api({ action: 'addSample', orderId: o.OrderID, urls: JSON.stringify(urls) });
+      if (!res || !res.ok) { toast((res && res.error) || 'Failed', true); return; }
+      toast('Sample bheja — approval pending');
+      closeModal(); loadOrders();
+    } catch (e) { toast(e.message || 'Upload failed', true); }
+    finally { $('modalSave').disabled = false; $('modalSave').textContent = 'Save'; }
+  });
+  $('sampleFiles').addEventListener('change', function () {
+    var box = $('sampleThumbs'); box.innerHTML = '';
+    Array.prototype.forEach.call(this.files, function (f) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        var img = document.createElement('img');
+        img.src = rd.result;
+        img.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;margin:4px';
+        box.appendChild(img);
+      };
+      rd.readAsDataURL(f);
+    });
+  });
+}
+
+/* ---------- review sample (approver) ---------- */
+async function openReview(o) {
+  if (!o) return;
+  openModal('Review Sample', '<div class="sk" style="height:80px"></div>', null);
+  var res = await api({ action: 'getDetail', orderId: o.OrderID });
+  if (!res || !res.ok) { toast((res && res.error) || 'Failed', true); closeModal(); return; }
+  var samples = res.samples || [];
+  var grid = samples.length
+    ? '<div class="photo-grid">' + samples.map(function (s) {
+        return '<a href="' + esc(s.URL) + '" target="_blank" rel="noopener">' +
+               '<img class="sample-img" src="' + esc(driveThumb(s.URL)) + '" loading="lazy" alt=""></a>';
+      }).join('') + '</div>'
+    : '<p class="empty">Koi sample nahi.</p>';
+  $('modalBody').innerHTML =
+    '<div class="summary-box"><b>' + esc(o.OrderID) + '</b> &middot; ' + esc(val(o.StickerName)) + '</div>' +
+    '<div class="detail-sub">Samples</div>' + grid +
+    '<div class="field"><label>Comment (optional)</label><textarea id="revFb" rows="2"></textarea></div>' +
+    '<div class="review-btns"><button class="btn btn-danger" id="revReject">✕ Reject</button>' +
+    '<button class="btn btn-primary" id="revApprove">✓ Approve</button></div>';
+  var doReview = async function (decision) {
+    $('revApprove').disabled = true; $('revReject').disabled = true;
+    var r = await api({ action: 'reviewSample', orderId: o.OrderID, decision: decision, feedback: $('revFb').value.trim() });
+    if (!r || !r.ok) { toast((r && r.error) || 'Failed', true); $('revApprove').disabled = false; $('revReject').disabled = false; return; }
+    toast(decision === 'Approved' ? 'Approved ✓' : 'Rejected ✕');
+    closeModal(); loadOrders();
+  };
+  $('revApprove').onclick = function () { doReview('Approved'); };
+  $('revReject').onclick  = function () { doReview('Rejected'); };
+}
+
+function sampleBadge(ss) {
+  if (!ss || ss === 'None') return '';
+  var map = { 'Pending Approval': 'b-pending', 'Approved': 'b-paid', 'Rejected': 'b-unpaid' };
+  return '<span class="badge ' + (map[ss] || 'b-na') + '">' + esc(ss) + '</span>';
 }
 
 async function save(action, data, okMsg, extra) {
