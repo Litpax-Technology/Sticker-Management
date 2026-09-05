@@ -487,7 +487,7 @@ function openSample(o) {
     $('modalSave').disabled = true; $('modalSave').textContent = 'Uploading...';
     try {
       var urls = [];
-      for (var i = 0; i < fileEl.files.length; i++) urls.push(await uploadImage(fileEl.files[i]));
+      for (var i = 0; i < fileEl.files.length; i++) urls.push(await uploadImage(fileEl.files[i], o.OrderID));
       var res = await api({ action: 'addSample', orderId: o.OrderID, urls: JSON.stringify(urls) });
       if (!res || !res.ok) { toast((res && res.error) || 'Failed', true); return; }
       toast('Sample bheja — approval pending');
@@ -703,10 +703,11 @@ function resizeImage(file, maxDim, quality) {
   });
 }
 
-function uploadImage(file) {
+function uploadImage(file, orderId) {
   return resizeImage(file, 1600, 0.85).then(function (up) {
     var payload = { action: 'uploadImage', token: (user && user.token) || '',
-                    filename: up.filename, mimeType: up.mimeType, data: up.data };
+                    filename: up.filename, mimeType: up.mimeType, data: up.data,
+                    orderId: orderId || '' };
     return fetch(CONFIG.API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
