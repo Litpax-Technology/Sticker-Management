@@ -1,6 +1,6 @@
 // config.js
 // Paste your deployed Google Apps Script Web App URL here (ends with /exec)
 const CONFIG = {
-  API_URL: "https://script.google.com/macros/s/AKfycbyPZnjj53FVzKZtMdmvkl1fxYk-lsuiZUyy17rH7eGxaVBFZfGDmr_1l31JvX3Mda1I/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbzi3aHqjFziWClRwN--Dq9McMxd_mgDq69doGonaFnarUWBG_-l6auQ1SLaSWjhZK25/exec",
   APP_NAME: "Sticker Tracker"
 };
