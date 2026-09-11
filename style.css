@@ -68,10 +68,10 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
 
 /* card / table */
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
-.table-scroll{overflow-x:auto}
+.table-scroll{overflow:auto;max-height:calc(100vh - 220px)}
 table{width:100%;border-collapse:collapse;min-width:900px}
 th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
-th{background:#fafafb;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
+th{background:#fafafb;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;position:sticky;top:0;z-index:2}
 tbody tr:hover{background:#fafafc}
 td.num,th.num{text-align:right}
 .empty{text-align:center;color:var(--muted);padding:26px}
