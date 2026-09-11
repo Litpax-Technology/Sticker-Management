@@ -136,7 +136,7 @@ function buildHead() {
   var cols = orderCols();
   var html = '<tr><th>Order</th>';
   cols.forEach(function (f) { html += '<th class="' + (f.type === 'number' ? 'num' : '') + '">' + esc(f.label) + '</th>'; });
-  html += '<th class="num">Received</th><th class="num">Pending</th><th>Status</th>' +
+  html += '<th class="num">Handed Over</th><th class="num">Received</th><th class="num">Pending</th><th>Status</th>' +
           '<th class="num">Paid</th><th class="num">Due</th><th>Payment</th><th>Actions</th></tr>';
   $('ordersHead').innerHTML = html;
 }
@@ -196,7 +196,8 @@ function renderOrders(res) {
     cols.forEach(function (f) {
       tds += '<td class="' + (f.type === 'number' ? 'num' : '') + '">' + esc(val(o[f.name])) + '</td>';
     });
-    tds += '<td class="num">' + num(o.QtyReceived) + '</td>' +
+    tds += '<td class="num">' + num(o.QtyHandedOver) + '</td>' +
+           '<td class="num">' + num(o.QtyReceived) + '</td>' +
            '<td class="num">' + num(o.QtyPending) + '</td>' +
            '<td>' + badge('qty', o.Status) + '</td>' +
            '<td class="num">' + num(o.AmountPaid) + '</td>' +
@@ -213,6 +214,7 @@ function renderOrders(res) {
       var ord = rows.filter(function (x) { return String(x.OrderID) === String(id); })[0];
       if (act === 'detail') openDetail(id);
       else if (act === 'ship') openShip(ord);
+      else if (act === 'receive') openReceive(ord);
       else if (act === 'pay') openPay(ord);
       else if (act === 'sample') openSample(ord);
       else if (act === 'review') openReview(ord);
@@ -247,6 +249,12 @@ function actions(o) {
   if (user.role === 'Admin' || user.role === 'Vendor') {
     if (handoverOk) b += '<button class="btn btn-ghost btn-sm" data-act="ship" data-id="' + id + '">+ Handover</button>';
     else b += '<span class="lock-note" title="Sample approve hone ke baad">🔒 Handover</span>';
+  }
+
+  // Receive — Receiver/Admin, sirf jab handover me kuch receive karne ko bacha ho
+  if (user.role === 'Admin' || user.role === 'Receiver') {
+    if ((Number(o.QtyToReceive) || 0) > 0)
+      b += '<button class="btn btn-ghost btn-sm" data-act="receive" data-id="' + id + '">+ Receive</button>';
   }
 
   if (user.role === 'Admin') b += '<button class="btn btn-ghost btn-sm" data-act="pay" data-id="' + id + '">+ Payment</button>';
@@ -385,6 +393,35 @@ function openShip(o) {
   }
 }
 
+function openReceive(o) {
+  if (!o) return;
+  var handed = Number(o.QtyHandedOver) || 0;
+  var received = Number(o.QtyReceived) || 0;
+  var toReceive = handed - received;
+  var head = '<div class="summary-box"><b>' + esc(o.OrderID) + '</b> &middot; ' + esc(val(o.StickerName)) +
+             '<br>Handed Over <b>' + handed + '</b> &middot; Received <b>' + received +
+             '</b> &middot; To Receive <b><span id="recvLive">' + toReceive + '</span></b></div>';
+  var body = '<div class="field"><label>Receive Date</label><input type="date" id="recvDate" value="' + todayStr() + '"></div>' +
+             '<div class="field"><label>Qty Received *</label><input type="number" id="recvQty" step="any" min="0" placeholder="0"></div>' +
+             '<div class="field"><label>Notes</label><input type="text" id="recvNotes" placeholder="Optional"></div>';
+  openModal('Receive Stock', head + body, async function () {
+    var qty = Number($('recvQty').value) || 0;
+    if (qty <= 0) { toast('Qty daalo', true); return; }
+    if (qty > toReceive) { toast('Qty exceeds to-receive (' + toReceive + ')', true); return; }
+    var data = { OrderID: o.OrderID, Qty: qty, Date: $('recvDate').value, Notes: $('recvNotes').value };
+    await save('addReceive', data, 'Received saved');
+  });
+
+  var qEl = $('recvQty'), liveEl = $('recvLive');
+  if (qEl && liveEl) {
+    qEl.addEventListener('input', function () {
+      var remain = toReceive - (Number(qEl.value) || 0);
+      liveEl.textContent = remain;
+      liveEl.style.color = remain < 0 ? 'var(--danger)' : '';
+    });
+  }
+}
+
 function openPay(o) {
   if (!o) return;
   var fields = config.fields.Payment;
@@ -409,7 +446,7 @@ async function openDetail(id) {
     var pend = Number(o.QtyPending) || 0, due = Number(o.AmountPending) || 0;
     var html = '<div class="summary-box"><b>' + esc(o.OrderID) + '</b> &middot; ' + esc(val(o.StickerName)) +
       ' &middot; ' + esc(val(o.Vendor)) +
-      '<br>Ordered <b>' + num(o.QtyOrdered) + '</b> &middot; Received <b>' + num(o.QtyReceived) + '</b> &middot; Pending <b>' + pend + '</b>' +
+      '<br>Ordered <b>' + num(o.QtyOrdered) + '</b> &middot; Handed Over <b>' + num(o.QtyHandedOver) + '</b> &middot; Received <b>' + num(o.QtyReceived) + '</b> &middot; Pending <b>' + pend + '</b>' +
             '<br>Total <b>' + num(o.TotalAmount) + '</b> &middot; Paid <b>' + num(o.AmountPaid) + '</b> &middot; Due <b>' + due + '</b></div>';
 
     if (o.SampleImage) {
@@ -444,11 +481,20 @@ async function openDetail(id) {
     html += '</div>';
     html += '<div class="cmt-add"><input id="cmtInput" class="search" placeholder="Comment likho..."><button class="btn btn-primary btn-sm" id="cmtSend">Send</button></div>';
 
-    html += '<div class="detail-sub">Receipts</div>';
+    html += '<div class="detail-sub">Handovers (Vendor)</div>';
     if (res.shipments.length) {
-      html += '<table class="mini-table"><tr><th>Date</th><th>Qty</th><th>Handover</th><th>By</th></tr>';
+      html += '<table class="mini-table"><tr><th>Date</th><th>Qty</th><th>Handover To</th><th>By</th></tr>';
       res.shipments.forEach(function (s) {
         html += '<tr><td>' + esc(val(s.Date)) + '</td><td>' + num(s.Qty) + '</td><td>' + esc(val(s.HandoverTo)) + '</td><td>' + esc(val(s.LoggedBy)) + '</td></tr>';
+      });
+      html += '</table>';
+    } else html += '<p class="empty">No handovers yet.</p>';
+
+    html += '<div class="detail-sub">Receipts (Store)</div>';
+    if (res.receipts && res.receipts.length) {
+      html += '<table class="mini-table"><tr><th>Date</th><th>Qty</th><th>Received By</th><th>Notes</th></tr>';
+      res.receipts.forEach(function (r) {
+        html += '<tr><td>' + esc(val(r.Date)) + '</td><td>' + num(r.Qty) + '</td><td>' + esc(val(r.ReceivedBy)) + '</td><td>' + esc(val(r.Notes)) + '</td></tr>';
       });
       html += '</table>';
     } else html += '<p class="empty">No receipts yet.</p>';
